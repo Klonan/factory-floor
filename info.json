@@ -1,0 +1,10 @@
+{
+  "name": "factory_floor",
+  "version": "0.1.0",
+  "title": "Factory Floor",
+  "author": "Klonan",
+  "contact": "",
+  "homepage": "",
+  "description": "A scenario based around importing and exporting items in a limited factory space.",
+  "factorio_version": "0.16"
+}

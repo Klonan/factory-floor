@@ -44,8 +44,6 @@ script.on_init(function (event)
       v.power_usage = 0
       v.electric_buffer_size = 5*10^9
       v.energy = 2.5*10^9
-      v.electric_output_flow_limit = 50000000
-      v.electric_input_flow_limit = 50000000
       table.insert(global.accumulators, v)
     end
   end
@@ -62,7 +60,7 @@ script.on_init(function (event)
     end
   end
   game.surfaces[1].set_tiles(tiles)
-  game.permissions.get_group(0).set_allows_action(defines.input_action.smart_pipette, false)
+  game.surfaces[1].set_tiles({{name = "grass-medium", position = {0,0}}})
 end)
 
 function force_init(force, index)
@@ -429,22 +427,34 @@ function fill_leaderboard_table(leaderboard_table)
   end
 end
 
-script.on_event(defines.events.on_player_crafted_item, function(event)
-  local stack = event.item_stack
+function player_buy(player, stack)
+  --if not stack.valid then return end
+  --if not stack.valid_for_read then return end
   local price = global.price_list[stack.name]
   if not price then return end
   price = price*stack.count
-  local player = game.players[event.player_index]
   --game.print(serpent.block(stack))
   if global.cash[player.force.name] >= price then 
     global.cash[player.force.name] = global.cash[player.force.name] - price
   else
     player.print({"", "Not enough money for ", game.item_prototypes[stack.name].localised_name})
     local removed = player.remove_item{name = stack.name, count = stack.count}
-    if removed ~= stack.count then
+    if stack.valid and stack.valid_for_read and removed ~= stack.count then
       remove_next_tick(player, {name = stack.name, count = stack.count - removed})
     end
   end
+end
+
+script.on_event(defines.events.on_player_crafted_item, function(event)
+  player_buy(game.players[event.player_index], event.item_stack)
+end)
+
+script.on_event(defines.events.on_player_pipette, function(event)
+  if not event.used_cheat_mode then return end
+  local player = game.players[event.player_index]
+  if not player.cursor_stack.valid then return end
+  if not player.cursor_stack.valid_for_read then return end
+  player_buy(player, player.cursor_stack)
 end)
 
 function remove_next_tick(player, stack)
@@ -581,8 +591,6 @@ function recreate_map(tiles,entities, offset, force)
         v.power_usage = 0
         v.electric_buffer_size = 5*10^9
         v.energy = 2.5*10^9
-        v.electric_output_flow_limit = 50000000
-        v.electric_input_flow_limit = 50000000
         table.insert(global.accumulators, v)
       end
     end
