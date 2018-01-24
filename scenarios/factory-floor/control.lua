@@ -59,12 +59,20 @@ end)
 
 function force_init(force, index)
   force.manual_crafting_speed_modifier = -1 --Disable handcrafting 
-  global.cash[force.name] = 10000
+  global.cash[force.name] = 50000
+  global.sell_chests[force.name] = {}
+  global.buy_chests[force.name] = {}
+  global.accumulators[force.name] = {}
   force.research_all_technologies()
   local spawn_position = get_spawn_coordinate(index)
   recreate_map(tiles, entities, spawn_position, force)
   force.set_spawn_position(spawn_position, game.surfaces[1])
   global.areas[force.name] = {{spawn_position[1] - 40, spawn_position[2] - 40}, {spawn_position[1] + 40, spawn_position[2] + 40}}
+  force.friendly_fire = false
+  for k, other in pairs (game.forces) do
+    force.set_friend(other, true)
+    other.set_friend(force, true)
+  end
 end
 
 script.on_event(defines.events.on_built_entity, function(event)
@@ -92,20 +100,32 @@ script.on_event(defines.events.on_player_created, function (event)
   
   local player = game.players[event.player_index]
   local character = player.character
-  player.character = nil
+  --player.character = nil
   if character then 
-    character.destroy()
+    --character.destroy()
   end
+  player.insert{name = "power-armor", count = 1}
+  local armor = player.get_inventory(defines.inventory.player_armor)[1].grid
+  armor.put({name = "fusion-reactor-equipment"})
+  armor.put({name = "exoskeleton-equipment"})
+  armor.put({name = "personal-roboport-equipment"})
+  armor.put({name = "personal-roboport-equipment"})
+  armor.put({name = "personal-roboport-equipment"})
+  player.insert{name = "construction-robot", count = 30}
   player.cheat_mode = true
   
   if (#game.players <= 1) then
     --game.show_message_dialog{text = {"factory-intro"}}
   end
-  if player.name ~= "" then
-    player.force = game.create_force(player.name)  
-    force_init(player.force, player.index)
-    player.teleport(player.force.get_spawn_position(game.surfaces[1]))
+  local force
+  if #game.forces == 64 then --thats the limit folks, throw them on a random player team
+    force = game.forces[math.random(4, 64)] -- not tested, who knows is this even works
+  else
+    force = game.create_force(player.name or "unnamed_player_force")
+    force_init(force, player.index)
   end
+  player.force = force
+  player.teleport(force.get_spawn_position(game.surfaces[1]))
   add_toggle_buttons(player)
 end)
 
@@ -121,7 +141,7 @@ script.on_event(defines.events.on_tick, function(event)
   sell_items(index)
   buy_items(index)
   calculate_income_and_expenses(index)
-  if game.tick % 3 == 0 then
+  if game.tick % 6 == 0 then
     for k, player in pairs (game.players) do
       update_cash(player)
     end
@@ -146,35 +166,35 @@ function update_leaderboard()
 end
 
 function sell_items(index)
-  local sell_roster = {}
+  local k = (game.tick%#game.connected_players) + 1
+  local force = game.connected_players[k].force
+  if not force then return end
+  local name = force.name
+  --local sell_roster = {}
   local price_list = global.price_list
   local chest_inventory = defines.inventory.chest
   local sell_rate = global.sell_rate
-  local cash = global.cash
-  local income = global.income
-  local index = index
-  local flow_statistics = {}
+  local cash = global.cash[name]
+  local income = global.income[name]
+  local total = 0
   local update_chest = function(chest)
-    local force_name = chest.force
-    local chest = chest.entity
     if not chest.valid then return end
     local inventory = chest.get_inventory(chest_inventory)
     for item_name, item_count in pairs (inventory.get_contents()) do
       if price_list[item_name] then
         local cost = (item_count*price_list[item_name])*sell_rate
         chest.remove_item{name = item_name, count = item_count}
-        sell_roster[item_name] = sell_roster[item_name] or 0
-        sell_roster[item_name] = sell_roster[item_name] - item_count
-        cash[force_name] = cash[force_name] + cost
-        income[force_name][index] = income[force_name][index] or 0
-        income[force_name][index] = income[force_name][index] + cost
-        flow_statistics[force_name] = flow_statistics[force_name] or 0
-        flow_statistics[force_name] = flow_statistics[force_name] + cost
+        --sell_roster[item_name] = sell_roster[item_name] or 0
+        --sell_roster[item_name] = sell_roster[item_name] - item_count
+        cash = cash + cost
+        income[index] = income[index] or 0
+        income[index] = income[index] + cost
+        total = total + cost
       end
     end
     return true
   end
-  local chests = global.sell_chests
+  local chests = global.sell_chests[name]
   local tick = game.tick
   for k, chest in pairs (chests) do
     --if (k + tick) % 60 == 0 then
@@ -183,24 +203,24 @@ function sell_items(index)
       end
     --end
   end
-  for force_name, coin in pairs (flow_statistics) do
-    game.forces[force_name].item_production_statistics.on_flow("coin", coin)
-  end
-  update_roster(sell_roster)
+  force.item_production_statistics.on_flow("coin", total)
+  global.cash[name] = cash
+  --update_roster(sell_roster)
 end
 
 function buy_items(index)
-  local buy_roster = {}
+  local k = (game.tick%#game.connected_players) + 1
+  local force = game.connected_players[k].force
+  if not force then return end
+  local name = force.name
+  --local buy_roster = {}
   local chest_inventory = defines.inventory.chest
   local price_list = global.price_list
-  local cash = global.cash
+  local cash = global.cash[name]
   local buy_rate = global.buy_rate
-  local expenses = global.expenses
-  local index = index
-  local flow_statistics = {}
+  local expenses = global.expenses[name]
+  local total = 0
   local update_chest = function(chest)
-    local force_name = chest.force
-    local chest = chest.entity
     if not chest.valid then return end
     local inventory = chest.get_inventory(chest_inventory)
     for k = 1,10 do
@@ -213,15 +233,14 @@ function buy_items(index)
           if price_list[stack_name] then
             local price = price_list[stack_name]
             local cost = round(buy_count*price*buy_rate)
-            if cash[force_name] > cost and inventory.can_insert(stack) then
-              cash[force_name] = cash[force_name] - cost
+            if cash > cost and inventory.can_insert(stack) then
+              cash = cash - cost
               chest.insert{name = stack_name, count = buy_count}
-              buy_roster[stack_name] = buy_roster[stack_name] or 0
-              buy_roster[stack_name] = buy_roster[stack_name] + buy_count
-              expenses[force_name][index] = expenses[force_name][index] or 0
-              expenses[force_name][index] = expenses[force_name][index] + cost
-              flow_statistics[force_name] = flow_statistics[force_name] or 0
-              flow_statistics[force_name] = flow_statistics[force_name] - cost
+              --buy_roster[stack_name] = buy_roster[stack_name] or 0
+              --buy_roster[stack_name] = buy_roster[stack_name] + buy_count
+              expenses[index] = expenses[index] or 0
+              expenses[index] = expenses[index] + cost
+              total = total - cost
             end
           end
         end
@@ -229,7 +248,7 @@ function buy_items(index)
     end
     return true
   end
-  local chests = global.buy_chests
+  local chests = global.buy_chests[name]
   local tick = game.tick
   for k, chest in pairs (chests) do
     --if (k + tick) % 60 == 0 then
@@ -238,13 +257,13 @@ function buy_items(index)
       end
     --end
   end
-  for force_name, coin in pairs (flow_statistics) do
-    game.forces[force_name].item_production_statistics.on_flow("coin", coin)
-  end
-  update_roster(buy_roster)
+  global.cash[name] = cash
+    force.item_production_statistics.on_flow("coin", total)
+  --update_roster(buy_roster)
 end
 
 function update_roster(roster_update)
+  if true then return end
   local roster = global.roster
   if not roster then roster = {} end
   for name, count in pairs (roster_update) do
@@ -298,45 +317,38 @@ function update_prices()
 end
 
 function electric_exchange(index)
-  local index = index
-  local cash = global.cash
+  local k = (game.tick%#game.connected_players) + 1
+  local force = game.connected_players[k].force
+  if not force then return end
+  local name = force.name
+  local cash = global.cash[name]
   local sell_rate = global.sell_rate or 1
   local buy_rate = global.buy_rate or 1
   local price_per_energy = global.price_per_energy
-  local flow_statistics = {}
-  local expenses = global.expenses
-  local income = global.income
+  local total = 0
+  local expenses = global.expenses[name]
+  local income = global.income[name]
   local energy_amount = 2.5*10^9
-  local update_accumulator = function (accumulator)
-  end
-  local accumulators = global.accumulators
+  local accumulators = global.accumulators[name]
   for k, accumulator in pairs (accumulators) do
     if accumulator.valid then 
       local force_name = accumulator.force.name
       local difference = accumulator.energy - energy_amount
       if difference ~= 0 then 
         local cost = difference*price_per_energy
+        total = total + cost
+        accumulator.energy = energy_amount
         if cost > 0 then
-          cash[force_name] = cash[force_name] + (cost*sell_rate)
-          accumulator.energy = energy_amount
-          income[force_name][index] = income[force_name][index] or 0
-          income[force_name][index] = income[force_name][index] + cost
-          flow_statistics[force_name] = flow_statistics[force_name] or 0
-          flow_statistics[force_name] = flow_statistics[force_name] + cost
+          cash = cash + (cost*sell_rate)
+          income[index] = (income[index] or 0) + cost
         elseif cost < 0 then
-          cash[force_name] = cash[force_name] + (cost*buy_rate)
-          accumulator.energy = energy_amount
-          expenses[force_name][index] = expenses[force_name][index] or 0
-          expenses[force_name][index] = expenses[force_name][index] + cost
-          flow_statistics[force_name] = flow_statistics[force_name] or 0
-          flow_statistics[force_name] = flow_statistics[force_name] + cost
+          cash = cash + (cost*buy_rate)
+          expenses[index] = (expenses[index] or 0) + cost
         end
       end
     end
   end
-  for force_name, coin in pairs (flow_statistics) do
-    game.forces[force_name].item_production_statistics.on_flow("coin", coin)
-  end
+  force.item_production_statistics.on_flow("coin", total)
 end
 
 function update_cash(player)
@@ -573,6 +585,9 @@ function recreate_map(tiles,entities, offset, force)
   for k, tile in pairs (tiles) do
     offset_tiles[k] = {name = "grass-1", position = {tile.position[1]+offset[1], tile.position[2]+offset[2]}}
   end
+  local buy_chests = global.buy_chests[force.name]
+  local sell_chests = global.sell_chests[force.name]
+  local accumulators = global.accumulators[force.name]
   game.surfaces[1].set_tiles(offset_tiles,true)
   for k, entity in pairs (entities) do
     local original_position = {entity.position[1], entity.position[2]}
@@ -580,17 +595,15 @@ function recreate_map(tiles,entities, offset, force)
     local v = game.surfaces[1].create_entity(entity)
     entity.position = original_position
     if v then
-      v.force = force or "neutral"
+      v.force = force
       v.destructible = false
       v.minable = false
       v.rotatable = false
       if v.name == "logistic-chest-requester" then
-        v.force = force or "neutral"
-        table.insert(global.buy_chests, {entity = v, force = force.name})
+        table.insert(buy_chests, v)
       end
       if v.name == "logistic-chest-passive-provider" then
-        v.force = force or "neutral"
-        table.insert(global.sell_chests, {entity = v, force = force.name})
+        table.insert(sell_chests, v)
       end
       if v.name =="electric-energy-interface" then
         v.power_production = 0
@@ -598,7 +611,7 @@ function recreate_map(tiles,entities, offset, force)
         v.electric_buffer_size = 5*10^9
         v.energy = 2.5*10^9
         v.operable = false
-        table.insert(global.accumulators, v)
+        table.insert(accumulators, v)
       end
     end
   end
