@@ -7,14 +7,12 @@ require ("tile_data")
 
 TODO
 
- - Make player charactesr + give some equipment they can sell
  - Fix map so you can see bases on the minimap
- - Fix unoptimisation
  - Fix all ugly guis + bumpyness
  - Tweak electrcity price
- - fix 1 craft item bug
+
 ]]
---if true then return end
+
 script.on_init(function (event)
   game.map_settings.pollution.enabled = false
   local surface = game.surfaces[1]
@@ -58,7 +56,7 @@ script.on_init(function (event)
 end)
 
 function force_init(force, index)
-  force.manual_crafting_speed_modifier = -1 --Disable handcrafting 
+  force.manual_crafting_speed_modifier = -1 --Disable handcrafting
   global.cash[force.name] = 50000
   global.sell_chests[force.name] = {}
   global.buy_chests[force.name] = {}
@@ -97,11 +95,11 @@ end
 script.on_configuration_changed(generate_price_list)
 
 script.on_event(defines.events.on_player_created, function (event)
-  
+
   local player = game.players[event.player_index]
   local character = player.character
   --player.character = nil
-  if character then 
+  if character then
     --character.destroy()
   end
   player.insert{name = "power-armor", count = 1}
@@ -113,7 +111,7 @@ script.on_event(defines.events.on_player_created, function (event)
   armor.put({name = "personal-roboport-equipment"})
   player.insert{name = "construction-robot", count = 30}
   player.cheat_mode = true
-  
+
   if (#game.players <= 1) then
     --game.show_message_dialog{text = {"factory-intro"}}
   end
@@ -148,12 +146,13 @@ script.on_event(defines.events.on_tick, function(event)
   end
   --check_bounding(global.bounding_limit)
   remove_next_tick_items()
-  update_leaderboard()
+  --update_leaderboard()
   --tend_prices_back()
   --update_prices()
 end)
 
 function update_leaderboard()
+  if true then return end
   if game.tick % 60 ~= 0 then return end
   for k, player in pairs (game.players) do
     local gui = mod_gui.get_frame_flow(player)
@@ -167,7 +166,9 @@ end
 
 function sell_items(index)
   local k = (game.tick%#game.connected_players) + 1
-  local force = game.connected_players[k].force
+  local player = game.connected_players[k]
+  if not player then return end
+  local force = player.force
   if not force then return end
   local name = force.name
   --local sell_roster = {}
@@ -210,7 +211,9 @@ end
 
 function buy_items(index)
   local k = (game.tick%#game.connected_players) + 1
-  local force = game.connected_players[k].force
+  local player = game.connected_players[k]
+  if not player then return end
+  local force = player.force
   if not force then return end
   local name = force.name
   --local buy_roster = {}
@@ -228,7 +231,7 @@ function buy_items(index)
       if stack then
         local stack_name = stack.name
         local stack_count = stack.count
-        if inventory.get_item_count(stack_name) < stack_count then 
+        if inventory.get_item_count(stack_name) < stack_count then
           local buy_count = stack_count - inventory.get_item_count(stack_name)
           if price_list[stack_name] then
             local price = price_list[stack_name]
@@ -289,7 +292,7 @@ function update_prices()
     if count ~= 0 then
       local original_price = initial_price_list[name]
       local sign = 1
-      if count < 0 then 
+      if count < 0 then
         sign = -1
       end
       local current_price = price_list[name]
@@ -318,7 +321,9 @@ end
 
 function electric_exchange(index)
   local k = (game.tick%#game.connected_players) + 1
-  local force = game.connected_players[k].force
+  local player = game.connected_players[k]
+  if not player then return end
+  local force = player.force
   if not force then return end
   local name = force.name
   local cash = global.cash[name]
@@ -331,10 +336,10 @@ function electric_exchange(index)
   local energy_amount = 2.5*10^9
   local accumulators = global.accumulators[name]
   for k, accumulator in pairs (accumulators) do
-    if accumulator.valid then 
+    if accumulator.valid then
       local force_name = accumulator.force.name
       local difference = accumulator.energy - energy_amount
-      if difference ~= 0 then 
+      if difference ~= 0 then
         local cost = difference*price_per_energy
         total = total + cost
         accumulator.energy = energy_amount
@@ -351,6 +356,19 @@ function electric_exchange(index)
   force.item_production_statistics.on_flow("coin", total)
 end
 
+function update_gui(player)
+  local gui = mod_gui.get_frame_flow(player)
+  local frame = gui.scores_frame
+  if not frame then
+    frame = gui.add{name = "scores_frame", type = "frame", style = "image_frame"}
+  else
+    frame.clear()
+  end
+  local table = frame.add{type = "table", column_count = 6}
+  for name, cash in spairs (global.cash, function(t,a,b) return t[a] > t[b] end) do
+  end
+end
+
 function update_cash(player)
   local gui = mod_gui.get_frame_flow(player)
   if gui.cash == nil then
@@ -363,13 +381,13 @@ function update_cash(player)
         name="cash_amount",
         type = "label",
         caption={"", {"cash"}, " ", comma_value(round(global.cash[player.force.name])) }
-      } 
+      }
     frame.add
       {
         name="income_amount",
         type = "label",
         caption={"", {"income"}, " ", comma_value(round((global.average_income[player.force.name]/global.average_period)*60)),"/m" }
-      } 
+      }
     frame.add
       {
         name="expense_amount",
@@ -408,7 +426,7 @@ end)
 
 function add_toggle_buttons(player)
   local gui = mod_gui.get_button_flow(player)
-  gui.add{type = "button", name = "toggle_leaderboard", caption = "Leaderboard"} 
+  gui.add{type = "button", name = "toggle_leaderboard", caption = "Leaderboard"}
   gui.add
   {
     name = "toggle_price_list",
@@ -420,7 +438,7 @@ end
 function toggle_leaderboard(player)
   local gui = mod_gui.get_frame_flow(player)
   if gui.leaderboard_frame then
-    gui.leaderboard_frame.style.visible = not gui.leaderboard_frame.style.visible 
+    gui.leaderboard_frame.style.visible = not gui.leaderboard_frame.style.visible
     return
   end
   create_leaderboard(gui)
@@ -450,7 +468,7 @@ function player_buy(player, stack)
   local count = stack.count
   local name = stack.name
   price = price*count
-  if global.cash[player.force.name] >= price then 
+  if global.cash[player.force.name] >= price then
     global.cash[player.force.name] = global.cash[player.force.name] - price
   else
     player.print({"", "Not enough money for ", game.item_prototypes[name].localised_name})
@@ -515,7 +533,7 @@ end
 
 function comma_value(amount)
   local formatted = amount
-  while true do  
+  while true do
     formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1,%2')
     if (k==0) then
       break
@@ -526,16 +544,16 @@ end
 
 function check_bounding(limit)
   for k, player in pairs(game.players) do
-    if player.position.x > limit then 
+    if player.position.x > limit then
       player.teleport{limit, player.position.y}
     end
-    if player.position.x < -limit then 
+    if player.position.x < -limit then
       player.teleport{-limit, player.position.y}
     end
-    if player.position.y > limit then 
+    if player.position.y > limit then
       player.teleport{player.position.x, limit}
     end
-    if player.position.y < -limit then 
+    if player.position.y < -limit then
       player.teleport{player.position.x, -limit}
     end
   end
@@ -581,7 +599,7 @@ function recreate_map(tiles,entities, offset, force)
 
 --This creates a section of map using an array of tiles and entities
   local offset_tiles = {}
-  
+
   for k, tile in pairs (tiles) do
     offset_tiles[k] = {name = "grass-1", position = {tile.position[1]+offset[1], tile.position[2]+offset[2]}}
   end
@@ -630,7 +648,7 @@ we use this to disable everything and only enabled certain types of research
       research.enabled = false
     end
   end
-  
+
   for k, research in pairs (game.forces.player.technologies) do
     local unlock_this = false
     for j, effect in pairs (research.effects) do
@@ -727,7 +745,7 @@ function spairs(t, order)
     for k in pairs(t) do keys[#keys+1] = k end
 
     -- if order function given, sort by it by passing the table and keys a, b,
-    -- otherwise just sort the keys 
+    -- otherwise just sort the keys
     if order then
         table.sort(keys, function(a,b) return order(t, a, b) end)
     else
@@ -755,8 +773,8 @@ end
 
 function reset_income(index)
   for name, cash in pairs (global.cash) do
-    if global.income[name] == nil then 
-      global.income[name] = {} 
+    if global.income[name] == nil then
+      global.income[name] = {}
       for i = 1, global.average_period do
         global.income[name][i] = 0
       end
@@ -769,8 +787,8 @@ end
 
 function reset_expenses(index)
   for name, cash in pairs (global.cash) do
-    if not global.expenses[name] then 
-      global.expenses[name] = {} 
+    if not global.expenses[name] then
+      global.expenses[name] = {}
       for i = 1, global.average_period do
         global.expenses[name][i] = 0
       end
