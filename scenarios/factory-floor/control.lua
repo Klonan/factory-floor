@@ -146,13 +146,13 @@ script.on_event(defines.events.on_tick, function(event)
   end
   --check_bounding(global.bounding_limit)
   remove_next_tick_items()
-  --update_leaderboard()
+  update_leaderboard()
   --tend_prices_back()
   --update_prices()
 end)
 
 function update_leaderboard()
-  if true then return end
+  --if true then return end
   if game.tick % 60 ~= 0 then return end
   for k, player in pairs (game.players) do
     local gui = mod_gui.get_frame_flow(player)
